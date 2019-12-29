@@ -191,6 +191,8 @@ class MyParent2{
 
 
 
+
+
 > 代码实例 cn.andios.jvm.classloader.MyTest3
 
 ```java
@@ -218,6 +220,8 @@ class MyParent3{
     }
 }
 ```
+
+
 
 
 
@@ -269,6 +273,8 @@ class MyParent4{
     }
 }
 ```
+
+
 
 
 
@@ -330,3 +336,85 @@ interface MyChild5 extends MyParent5{
 }
 ```
 
+
+
+
+
+> 代码实例 cn.andios.jvm.classloader.MyTest6
+
+```java
+public class MyTest6 {
+
+    public static void main(String[] args) {
+        Singleton singleton = Singleton.getInstance();
+        /**
+         * result:
+         *      counter1:1
+         *      counter2:1
+         *      counter3:1
+         *
+         *      main-counter1:1
+         *      main-counter2:1
+         *      main-counter3:0
+         *  这里main方法中调用Singleton的静态方法getInstance(),
+         *  是对Singleton的主动使用,所以Singleton类会被初始化,在初始化之前会经过
+         *  准备阶段,为变量赋默认值,counter1,counter2,counter3默认值都是0,singleton
+         *  默认值是null
+         *
+         *  紧接着调用getInstance会导致这个类被初始化(从上到下),为各个变量赋初值,
+         *  counter1没有赋值就为0,counter2赋初值为0,singleton变量的赋值就会执行构造方法,
+         *  构造方法中,counter1,counter2会使用初始化之后的值,counter3会使用准备阶段之后的值,都是0,
+         *  所以++之后都为1,所以打印结果都是1
+         *  接着往下执行,完成对counter3的初始化,将counter3赋为0,所以main中打印counter3为0.而不是1
+         *
+         */
+        System.out.println("main-counter1:"+ Singleton.counter1);
+        System.out.println("main-counter2:"+ Singleton.counter2);
+        System.out.println("main-counter3:"+ Singleton.counter3);
+
+    }
+
+
+}
+class  Singleton{
+    public static int counter1;
+
+    public static int counter2 = 0;
+
+    private static Singleton singleton = new Singleton();
+
+    private Singleton(){
+        counter1 ++;
+        counter2 ++;
+        counter3 ++;
+        System.out.println("counter1:"+counter1);
+        System.out.println("counter2:"+counter2);
+        System.out.println("counter3:"+counter3);
+    }
+    public static int counter3 = 0;
+
+    public static  Singleton getInstance(){
+        return  singleton;
+    }
+}
+```
+
+### 类加载
+
+- 类的加载的最终产品是位于内存中的Class对象
+
+- Class对象封装了类在方法区内的数据结构,并且向java程序员提供了访问方法区内的数据结构的接口.
+
+- 有两种类型的类加载器
+
+  - java虚拟机自带的加载器
+    - `bootstrap classloader`
+    - `extension classloader`
+    - `app classloader`
+  - 用户自定义的类加载器
+    - `java.lang.ClassLoader`的子类
+    - 用户可以定制类的加载方式
+
+- 类加载器并不需要等到某个类被"首次主动使用"时再加载它.
+
+  比如在"代码实例 cn.andios.jvm.classloader.MyTest1"中,用`-XX:+ TraceClassLoading`参数追踪执行`System.out.println(MyChild1.str);`类加载情况时,明明只初始化`MyParent1`,但`MyChild1`也被加载了.
