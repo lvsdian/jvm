@@ -1,4 +1,4 @@
-[toc]
+[TOC]
 
 ## 类加载
 
@@ -399,7 +399,7 @@ class  Singleton{
 }
 ```
 
-### 类加载
+### 类的加载
 
 - 类的加载的最终产品是位于内存中的Class对象
 
@@ -418,3 +418,258 @@ class  Singleton{
 - 类加载器并不需要等到某个类被"首次主动使用"时再加载它.
 
   比如在"代码实例 cn.andios.jvm.classloader.MyTest1"中,用`-XX:+ TraceClassLoading`参数追踪执行`System.out.println(MyChild1.str);`类加载情况时,明明只初始化`MyParent1`,但`MyChild1`也被加载了.
+  
+- JVM规范允许类加载器在预料某个类将要被使用时就预先加载它，如果在预先加载的过程中遇到了.class文件缺失或存在错误，类加载器必须在**程序首次主动使用**该类时才报告错误。
+
+- 如果这个类一直没有被程序主动使用，那么类加载器就不会报告错误。
+
+### 类的验证
+
+- 类被加载后，就进入到连接阶段。连接就是将已经读入到内存中的类的二进制数据合并到虚拟机的运行时环境中去。
+
+### 类的准备
+
+<img src="img/class_prepare01.png" style="zoom: 67%;" />
+
+![](img/class_prepare02.png)
+
+### 类的初始化
+
+<img src="img/class_init01.jpg" style="zoom:80%;" />
+
+<img src="img/class_init02.jpg" style="zoom:80%;" />
+
+- 类的初始化步骤
+  1. 假如这个类还没有被加载或连接，那就先进行加载和连接
+  2. 假如类存在直接父类，并且这个父类还没有被初始化，就先初始化直接父类
+  3. 假如类中存在初始化语句，就依次执行这些初始化语句
+
+### 类的初始化时机
+
+- 七种主动使用
+
+1. 创建类的实例
+2. 访问某个类或接口的静态变量，或者对该静态变量赋值
+3. 调用类的静态方法
+4. 反射(如`Class.forName("com.test.Test")`)
+5. 初始化一个类的子类
+6. jvm启动时被标明为启动类的类
+7. jdk1.7开始提供的动态语言支持：`java.lang.invoke.MethodHandle`实例的解析结果`REF_getStatic,REF_putStatic,REF_invokeStatic`句柄对应的类没有初始化，则初始化。
+
+<img src="img/class_init03.png" style="zoom:80%;" />
+
+
+
+`cn.andios.jvm.classloader.MyTest5_3`总结：
+
+> 对于接口，接口中的变量都由final修饰，**当变量值在编译期可以确定时**(这里测试案例是在main方法中调用接口的变量)，程序编译后变量的值会放到main方法所在类的常量池中，main方法所在类并没有直接引用这个接口，所以**不会加载或初始化接口或其父接口,当变量值需要在运行器才能确定时，父接口和接口本身都要被加载，但只初始化接口本身**
+
+
+
+> 对于类，变量不一定有final修饰，**当变量值在编译期就能确定且由final修饰时，不会初始化类本身或其父类/接口，如果不能在编译期确定或没有被final修饰，就会导致类本身和父类/父接口被加载并且导致类本身被初始化，如果是继承父类，还会导致父类被初始化，如果是实现接口，不会导致接口被初始化**
+
+
+
+```mermaid
+graph LR
+A[接口] --> B[变量值生成时期]
+    B -->|编译期| D[不会加载或初始化接口本身及父接口]
+    B -->|运行期| E[加载接口本身和父接口,但只初始化接口本身]
+```
+
+``` mermaid
+
+
+
+
+graph LR 
+A[类] --> B[实现接口]
+	B --> D[变量值生成时期]
+ 		D -->|编译期| E[变量是否有final修饰]
+ 			E -->|是| G[不会加载或初始化类本身或父接口]
+ 			E -->|否| I[需要加载类本身及父接口,只初始化类本身]
+  		D -->|运行期| F[变量是否有final修饰]
+  			F -->|是| P[需要加载类本身及父接口,只初始化类本身]
+ 			F -->|否| Q[需要加载类本身及父接口,只初始化类本身]
+A[类] --> C[继承父类]
+	C --> J[变量值生成时期]
+ 		J -->|编译期| L[变量是否有final修饰]
+ 			L -->|是| M[不会加载或初始化类本身或父类]
+ 			L -->|否| N[需要加载且初始化类本身及父类]
+  		J -->|运行期| O[会加载并初始化父接口]
+  			O -->|是| R[需要加载且初始化类本身及父类]
+ 			O -->|否| S[需要加载且初始化类本身及父类]
+```
+
+
+
+> 代码实例 cn.andios.jvm.classloader.MyTest5_3
+
+```java
+public class MyTest5_3 {
+    public static void main(String[] args) {
+        /**
+         * case:接口继承接口，变量值在编译期生成
+         *
+         * 加载：  MyTest5_3
+         *
+         * 编译后删除MyParent5_3_Interface，MyChild5_3_Interface_1两个class文件依旧可以运行
+         *
+         * reason：a的值在编译期确定，直接放到了MyTest5_3的常量池中，
+         *      所以MyChild5_3_Interface_1不需要被加载，
+         *      MyParent5_3_Interface更不需要被加载
+         */
+        //System.out.println(MyChild5_3_Interface_1.a);
+
+
+        /**
+         * case:接口继承接口，变量值在运行期生成
+         *
+         * 加载：MyTest5_3  MyParent5_3_Interface  
+         *      MyChild5_3_Interface_2   MyParent5_3_Interface$1
+         */
+        //System.out.println(MyChild5_3_Interface_2.a);
+
+
+        /**
+         * case:类实现接口，变量值在编译期生成 ,有final
+         *
+         * 加载：MyTest5_3
+         */
+        //System.out.println(MyChild5_3_Class_Impl_1.a);
+
+        /**
+         * case:类实现接口，变量值在运行期生成，有final
+         *
+         * 加载：MyTest5_3    MyParent5_3_Interface    
+         *      MyChild5_3_Class_Impl_2   MyParent5_3_Interface$1
+         */
+        //System.out.println(MyChild5_3_Class_Impl_2.a);
+
+        /**
+         * case:类实现接口，变量值在编译期生成，无final
+         *
+         * 加载：MyTest5_3    MyParent5_3_Interface    
+         *      MyChild5_3_Class_Impl_3    MyParent5_3_Interface$1
+         */
+        //System.out.println(MyChild5_3_Class_Impl_3.a);
+
+
+        /**
+         * case:类实现接口，变量值在运行期生成，无final
+         *
+         * 加载：MyTest5_3  MyParent5_3_Interface  
+         *      MyChild5_3_Class_Impl_4  MyParent5_3_Interface$1
+         */
+        //System.out.println(MyChild5_3_Class_Impl_4.a);
+
+        /**
+         * case:类继承父类，变量值在编译期生成，有final
+         *
+         * 加载：MyTest5_3
+         */
+        //System.out.println(MyChild5_3_Class_Extends_1.a);
+
+        /**
+         * case:类继承父类，变量值在运行期生成，有final
+         *
+         * 加载：MyTest5_3   MyParent5_3_Class   
+         *      MyChild5_3_Class_Extends_2  MyParent5_3_Class$1
+         */
+        //System.out.println(MyChild5_3_Class_Extends_2.a);
+
+        /**
+         * case:类继承父类，变量值在编译期生成，无final
+         *
+         * 加载：MyTest5_3    MyParent5_3_Class   
+         *      MyChild5_3_Class_Extends_3   MyParent5_3_Class$1
+         */
+        //System.out.println(MyChild5_3_Class_Extends_3.a);
+
+
+        /**
+         * case:类继承父类，变量值在运行期生成，无final
+         * 加载：MyTest5_3  MyParent5_3_Class  
+         *      MyChild5_3_Class_Extends_4  MyParent5_3_Class$1
+         */
+        System.out.println(MyChild5_3_Class_Extends_4.a);
+    }
+}
+/**
+ * 判断是否初始化：代码块是否执行
+ * 判断是否被加载：-XX:+TraceClassLoading
+ */
+interface MyParent5_3_Interface{
+    public static Thread thread = new Thread(){
+        {
+            System.out.println("MyParent5_3_Interface invoked...");
+        }
+    };
+}
+/**
+ * 判断是否初始化：代码块是否执行
+ * 判断是否被加载：-XX:+TraceClassLoading
+ */
+class MyParent5_3_Class{
+    public static Thread thread = new Thread(){
+        {
+            System.out.println("MyParent5_3_Class invoked...");
+        }
+    };
+}
+/** 接口继承接口，变量值在编译期生成 */
+interface MyChild5_3_Interface_1 extends MyParent5_3_Interface{
+    int a = 5;
+}
+/** 接口继承接口，变量值在运行期生成 */
+interface MyChild5_3_Interface_2 extends MyParent5_3_Interface{
+    int a = new Random().nextInt(1);
+}
+
+/** 类实现接口，变量值在编译期生成 ,有final*/
+class MyChild5_3_Class_Impl_1 implements MyParent5_3_Interface{
+    public static final int a = 5;
+}
+/** 类实现接口，变量值在运行期生成，有final*/
+class MyChild5_3_Class_Impl_2 implements MyParent5_3_Interface{
+    public static final int a = new Random().nextInt(1);
+}
+/** 类实现接口，变量值在编译期生成，无final */
+class MyChild5_3_Class_Impl_3 implements MyParent5_3_Interface{
+    public static  int a = 5;
+}
+/** 类实现接口，变量值在运行期生成，无final*/
+class MyChild5_3_Class_Impl_4 implements MyParent5_3_Interface{
+    public static  int a = new Random().nextInt(1);
+}
+
+/** 类继承父类，变量值在编译期生成，有final */
+class MyChild5_3_Class_Extends_1 extends MyParent5_3_Class{
+    public static final int a = 5;
+}
+/** 类继承父类，变量值在运行期生成，有final */
+class MyChild5_3_Class_Extends_2 extends MyParent5_3_Class{
+    public static final int a = new Random().nextInt(1);
+}
+/** 类继承父类，变量值在编译期生成，无final */
+class MyChild5_3_Class_Extends_3 extends MyParent5_3_Class{
+    public static  int a = 5;
+}
+/** 类继承父类，变量值在运行期生成，无final */
+class MyChild5_3_Class_Extends_4 extends MyParent5_3_Class{
+    public static  int a = new Random().nextInt(1);
+}
+```
+
+
+
+- 只有当程序访问的静态变量或静态方法在确实在当前类或当前接口中定义时，才可以认为是对类或接口的主动使用
+- 调用ClassLoader类的loadClass方法加载一个类，并不是对类的主动使用，不会导致类的初始化
+
+### 类加载器
+
+<img src="img/class_loader01.png" style="zoom:80%;" />
+
+<img src="img/class_loader02.png" style="zoom:80%;" />
+
+- 除了以上虚拟机自带的加载器外，用户还可以定制自己的类加载器。java提供了抽象类`java.lang.ClassLoader`,所有用户自定义的类加载器都应该继承`ClassLoader`类。
