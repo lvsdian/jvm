@@ -473,7 +473,7 @@ class  Singleton{
 
 
 
-> 对于类，变量不一定有final修饰，**当变量值在编译期就能确定且由final修饰时，不会初始化类本身或其父类/接口，如果不能在编译期确定或没有被final修饰，就会导致类本身和父类/父接口被加载并且导致类本身被初始化，如果是继承父类，还会导致父类被初始化，如果是实现接口，不会导致接口被初始化**
+> 对于类，变量不一定有final修饰，**当变量值在编译期就能确定且由final修饰时，不会加载或初始化类本身或其父类/接口，如果不能在编译期确定或没有被final修饰，就会导致类本身和父类/父接口被加载并且导致类本身被初始化，如果是继承父类，还会导致父类被初始化，如果是实现接口，不会导致接口被初始化**
 
 
 
@@ -680,3 +680,68 @@ class MyChild5_3_Class_Extends_4 extends MyParent5_3_Class{
 <img src="img/class_loader02.png" style="zoom:80%;" />
 
 - 除了以上虚拟机自带的加载器外，用户还可以定制自己的类加载器。java提供了抽象类`java.lang.ClassLoader`,所有用户自定义的类加载器都应该继承`ClassLoader`类。
+
+- `Bootstrap ClassLoader`
+  - **c++实现，加载`$JAVA_JOME/jre/lib/rt.jar`**
+- `Extension ClassLoader`
+  - **java实现，加载`$JAVA_HOME/jre/lib/ext`下的jar或者加载`java.ext.dirs`指定的目录中的jar**
+- `App ClassLoader`
+  - **java实现，加载`classpath`或`java.class.path`指定的目录中的jar**
+
+### 获取类的Class对象
+
+> 代码实例 cn.andios.jvm.classloader.MyTest7
+
+```java
+public class MyTest7 {
+    public static void main(String[] args) throws ClassNotFoundException {
+        //获取一个类的Class对象的4种方法
+        Class clazz = null;
+
+        /**
+         *  result:
+         *      test static block
+         *      clazz:class cn.andios.jvm.classloader.Test
+         *  reason：
+         *      通过 Class.forName 会导致类的初始化
+         */
+//        clazz = Class.forName("cn.andios.jvm.classloader.Test");
+//        System.out.println("clazz:"+clazz);
+
+        /**
+         *  result:
+         *      clazz:class cn.andios.jvm.classloader.Test
+         *  reason:
+         *      通过 类.class 不会导致类的初始化
+         */
+        clazz = cn.andios.jvm.classloader.Test.class;
+        System.out.println("clazz:"+clazz);
+
+        /**
+         *  result:
+         *      clazz:class cn.andios.jvm.classloader.Test
+         *  reason:
+         *      通过  ClassLoader.getSystemClassLoader().loadClass 不会导致类的初始化
+         */
+//        clazz = ClassLoader.getSystemClassLoader().loadClass("cn.andios.jvm.classloader.Test");
+//        System.out.println("clazz:"+clazz);
+
+        /**
+         *  result:
+         *      test static block
+         *      clazz:class cn.andios.jvm.classloader.Test
+         *  reason：
+         *      通过 对象.getClass() 会导致类的初始化
+         */
+//        clazz = new Test().getClass();
+//        System.out.println("clazz:"+clazz);
+    }
+}
+class Test{
+    static {
+        System.out.println("test static block");
+    }
+}
+
+```
+
