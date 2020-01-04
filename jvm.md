@@ -745,3 +745,54 @@ class Test{
 
 ```
 
+### java.lang.ClassLoader
+
+> javadoc：
+>
+> ​		一个类加载器是一个负责加载类的对象，类`ClassLoader`是一个抽象类。给定一个类的二进制名称(二进制名称：任何作为一个String参数提供给`ClassLoader`类里面的方法的类名必须是由`The Java Language Specification`定义的二进制名称)，那么一个类加载器就会尝试去定位或生成构成类定义的数据。一种典型的策略是将名字转为一个文件名字，然后从文件系统中读取这个名字对应的文件。
+>
+> ​		每一个Class对象都包含一个定义这个类的ClassLoader的引用。        
+>
+> ​		**数组类的Class对象不是由类加载器创建，而是由jvm在运行时根据需要自动创建的，`Class.getClassLoader()`返回的数组类的类加载器与其元素的类加载器相同，如果元素类型是原生类型，那么这个数组类是没有类加载器的。**
+
+> 代码实例 cn.andios.jvm.classloader.MyTest15
+
+```java
+public class MyTest15 {
+    public static void main(String[] args) {
+        String []  str = new String[]{"aa","bb"};
+        /**
+         * result：
+         *      class [Ljava.lang.String;
+         *      null
+         * 这里null表示由启动类加载
+         */
+        System.out.println(str.getClass());
+        System.out.println(str.getClass().getClassLoader());
+
+        Integer [] arr = new Integer[]{1,2};
+        /**
+         * result:
+         *      class [Ljava.lang.Integer;
+         *      null
+         * 这里null并不是表示启动类加载，而是确实没有类加载器，因为它是原生类型
+         */
+        System.out.println(arr.getClass());
+        System.out.println(arr.getClass().getClassLoader());
+
+        MyTest15 [] test = new MyTest15[]{new MyTest15(),new MyTest15()};
+        /**
+         * result:
+         *      class [Lcn.andios.jvm.classloader.MyTest15;
+         *      sun.misc.Launcher$AppClassLoader@18b4aac2
+         */
+        System.out.println(test.getClass());
+        System.out.println(test.getClass().getClassLoader());
+    }
+}
+```
+
+> ​		应用实现`ClassLoader`的子类是为了扩展jvm动态加载类的方式。
+>
+> ​		类加载器通常被安全管理器用来指示安全域。
+
