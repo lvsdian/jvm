@@ -749,11 +749,11 @@ class Test{
 
 > javadoc：
 >
-> ​		一个类加载器是一个负责加载类的对象，类`ClassLoader`是一个抽象类。给定一个类的二进制名称(二进制名称：任何作为一个String参数提供给`ClassLoader`类里面的方法的类名必须是由`The Java Language Specification`定义的二进制名称)，那么一个类加载器就会尝试去定位或生成构成类定义的数据。一种典型的策略是将名字转为一个文件名字，然后从文件系统中读取这个名字对应的文件。
+> 一个类加载器是一个负责加载类的对象，类`ClassLoader`是一个抽象类。给定一个类的二进制名称(二进制名称：任何作为一个String参数提供给`ClassLoader`类里面的方法的类名必须是由`The Java Language Specification`定义的二进制名称)，那么一个类加载器就会尝试去定位或生成构成类定义的数据。一种典型的策略是将名字转为一个文件名字，然后从文件系统中读取这个名字对应的文件。
 >
-> ​		每一个Class对象都包含一个定义这个类的ClassLoader的引用。        
+> 每一个Class对象都包含一个定义这个类的ClassLoader的引用。        
 >
-> ​		**数组类的Class对象不是由类加载器创建，而是由jvm在运行时根据需要自动创建的，`Class.getClassLoader()`返回的数组类的类加载器与其元素的类加载器相同，如果元素类型是原生类型，那么这个数组类是没有类加载器的。**
+> **数组类的Class对象不是由类加载器创建，而是由jvm在运行时根据需要自动创建的，`Class.getClassLoader()`返回的数组类的类加载器与其元素的类加载器相同，如果元素类型是原生类型，那么这个数组类是没有类加载器的。**
 
 > 代码实例 cn.andios.jvm.classloader.MyTest15
 
@@ -792,7 +792,54 @@ public class MyTest15 {
 }
 ```
 
-> ​		应用实现`ClassLoader`的子类是为了扩展jvm动态加载类的方式。
+> 应用实现`ClassLoader`的子类是为了扩展jvm动态加载类的方式。
 >
-> ​		类加载器通常被安全管理器用来指示安全域。
+> 类加载器通常被安全管理器用来指示安全域。
+>
+> CLassLoader类使用一种委托模型去寻找类和资源，ClassLoader的每一个实例都有与之关联的父类加载器.当被要求去寻找一个类或资源的时候，ClassLoader的实例会在它自己寻找类或资源之前将资源或类的寻找委托给它的父类加载器，虚拟机内建的类加载器成为"bootstrap class loader"，它本身是没有双亲的，但是它可以作为一个类加载器实例的双亲。
+> 
+> 支持并发加载类的类加载器比如"paraller capable"类加载器被要求在类初始化期间通过调用`java.lang.ClassLoader#registerAsParallelCapable`注册它们自己，ClassLoader这个类默认就被注册为paraller capable.然而，如果它的子类如果是paraller capable，那么它的子类也是需要注册的。
+>
+> 在委托模型不是很严格的层次化的环境下，类加载器需要是paraller capable的，否则类加载会导致死锁，因为加载器的锁在类加载的过程中是一直被持有的。
+> 
+> 通常情况下，jvm以一种与平台相关的方式从本地文件系统中加载类。比如说，在unix系统中，jvm是从`CLASSPATH`环境变量指定的目录中加载类的。
+>
+> 然而，有些类并不是来源于文件，比如来源于网络，或者由应用构建出来(比如动态代理)，这种情况下`java.lang.ClassLoader#defineClass(java.lang.String, byte[], int, int)`方法会将一个字节数组转换成一个类的实例，这个新定义的类的实例可以通过`java.lang.Class#newInstance`来创建.
+>
+> 由一个类加载器创建的对象的方法或构造器还可能引用其他的类。为了确定引用到的类是什么，jvm还会调用最初创建这个类的类加载器的`java.lang.ClassLoader#loadClass(java.lang.String)`方法。
+>    
+> 比如一个应用可以创建一个网络类加载器从一个服务器上下载文件，如下：
+> ```java
+> ClassLoader loader = new NetworkClassLoader(host,port);
+> Object main = loader.loadClass("Main", true).newInstance();
+> ```
+> 网络类加载器的子类必须定义
+> `java.lang.ClassLoader#findClass`方法从网络中加载类数据。一旦它下载好了构成了类字节码文件的字节后，它应该用`java.lang.ClassLoader#defineClass(java.lang.String, byte[], int, int)`方法创建实例，如下：
+> ``` java
+> class NetworkClassLoader extends ClassLoader {
+>     String host;
+>     int port;
+>     public Class findClass(String name) {
+>         byte[] b = loadClassData(name);
+>         return defineClass(name, b, 0, b.length);
+>     }
+>     private byte[] loadClassData(String name) {
+>         // load the class data from the connection
+>        ···
+> }
+> ```
 
+#### java.lang.ClassLoader#findClass
+
+> javadoc：
+> 
+> 找到有指定的二进制名字的字节码文件，这个方法应该被遵循委托模型的类加载器的实现类重写，这个方法在检查完请求加载的类的父类加载器后会被`java.lang.ClassLoader#loadClass(java.lang.String)`调用。默认实现会抛出`ClassNotFoundException`异常
+
+#### java.lang.ClassLoader#defineClass(java.lang.String, byte[], int, int)
+> javadoc：
+>
+> 讲一个字节数组转为Class类的实例，在这个Class被使用之前，必须要被解析.
+>
+> 这个方法会分配一个默认的`ProtectionDomain`给新创建的类，`ProtectionDomain`是为了确保返回来的class的信息都是正确的，默认的`ProtectionDomain`在第一次调用`java.lang.ClassLoader#defineClass(java.lang.String, byte[], int, int)`时被创建，在随后的调用中会一直复用。
+>
+> 要为一个类指定特定的`ProtectionDomain`，可以使用`java.lang.ClassLoader#defineClass(java.lang.String, byte[], int, int, java.security.ProtectionDomain)`方法将`ProtectionDomain`作为参数
