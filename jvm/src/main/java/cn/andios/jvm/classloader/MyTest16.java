@@ -9,10 +9,13 @@ import java.io.*;
  */
 public class MyTest16 extends ClassLoader{
     private String classLoaderName;
+    /** 文件扩展名 */
     private final String fileExtension = ".class";
+    /** 文件路径 */
+    private String path;
 
     /**
-     * 默认父加载器为SystemClassLoader
+     * 默认父加载器为SystemClassLoader的构造方法
      * @param classLoaderName
      */
     public MyTest16(String classLoaderName){
@@ -21,7 +24,7 @@ public class MyTest16 extends ClassLoader{
     }
 
     /**
-     * 父加载器为指定的parent
+     * 父加载器为指定的parent的构造方法
      * @param parent
      * @param classLoaderName
      */
@@ -29,8 +32,21 @@ public class MyTest16 extends ClassLoader{
         super(parent);
     }
 
+    public void setPath(String path) {
+        this.path = path;
+    }
+
+    /**
+     * 重写父类的findClass方法
+     * @param className
+     * @return
+     * @throws ClassNotFoundException
+     */
     @Override
     protected Class<?> findClass(String className) throws ClassNotFoundException {
+        //如果这句话打印了，表明这个方法调用了，即使用了这个自定义的类加载器，而不是jdk的类加载器
+        System.out.println("load "+className+" findClass invoked & classLoaderName："+this.classLoaderName);
+        //调用loadClassData方法加载类信息
         byte[] data = loadClassData(className);
         return this.defineClass(className,data,0,data.length);
     }
@@ -45,11 +61,12 @@ public class MyTest16 extends ClassLoader{
         InputStream is = null;
         byte [] data = null;
         ByteArrayOutputStream baos = null;
+        //包名转为路径名
+        name = name.replace(".","\\");
         try {
-            //将路径中的.替换为\\
-            this.classLoaderName = this.classLoaderName.replace(".","\\");
-            //字节流读取文件
-            is = new FileInputStream(new File(name+this.fileExtension));
+            //字节流读取指定的字节码文件
+            is = new FileInputStream(new File(this.path+name+this.fileExtension));
+            baos = new ByteArrayOutputStream();
             int ch = 0;
             while ((ch = is.read())!= -1){
                 baos.write(ch);
@@ -60,7 +77,6 @@ public class MyTest16 extends ClassLoader{
         } catch (IOException e) {
             e.printStackTrace();
         }finally {
-            //关闭资源
             try {
                 assert is != null;
                 is.close();
@@ -69,22 +85,60 @@ public class MyTest16 extends ClassLoader{
             } catch (IOException e) {
                 e.printStackTrace();
             }
-
         }
+        //返回byte []
         return  data;
     }
 
     public static void main(String[] args) throws Exception {
+        //创建一个自定义类加载器，名称是loader1,它的父类加载器是AppClassLoader
         MyTest16 loader1 = new MyTest16("loader1");
-        test(loader1);
-    }
-    public static void test(ClassLoader classLoader) throws Exception {
-        Class<?> clazz = classLoader.loadClass("cn.andios.jvm.classloader.MyTest1");
-        Object obj = clazz.newInstance();
-        System.out.println(obj);
-        System.out.println(obj.getClass());
-        System.out.println(obj.getClass().getClassLoader());
+        //设置路径
+        //loader1.setPath("C:\\Users\\LSD\\Desktop\\jvm\\jvm\\jvm\\target\\classes\\");
+        loader1.setPath("G:\\");
 
-    }
+        Class<?> clazz1 = loader1.loadClass("cn.andios.jvm.classloader.MyTest1");
+        System.out.println("clazz1:"+clazz1.hashCode());
 
+        System.out.println("============================");
+
+        //创建一个自定义类加载器，名称是loader2,它的父类加载器是AppClassLoader
+        MyTest16 loader2 = new MyTest16("loader1");
+        //设置路径
+        //loader1.setPath("C:\\Users\\LSD\\Desktop\\jvm\\jvm\\jvm\\target\\classes\\");
+        loader2.setPath("G:\\");
+
+        Class<?> clazz2 = loader2.loadClass("cn.andios.jvm.classloader.MyTest1");
+        System.out.println("clazz2:"+clazz2.hashCode());
+        /**
+         * result:
+         *  把target下MyTest1.class文件拷贝一份到G盘如上目录，
+         *  如果类路径中存在MyTest1.class文件，即项目的target下存在
+         *  cn.andios.jvm.classloader.MyTest1.class文件，那么不管
+         *  loader1.setPath用的C盘文件还是G盘文件，MyTest1这个类都由
+         *  jdk的AppClassLoader来加载，一次运行的结果：
+         *      clazz1:1163157884
+         *      ============================
+         *      clazz2:1163157884
+         *   两个Class的hashcode()一样，说明加载的类一样
+         *
+         *   因为当classpath下存在MyTest1.class文件时，AppClassLoader试图从classpath
+         *   下加载这个文件成功了，所以轮不到我们自定义的类加载器来加载
+         *   当loader2尝试加载时，发现之前加载过了，所以直接拿过来，不会再加载
+         *
+         *  如果把target下MyTest1.class文件删掉，loader1.setPath使用的C盘路径，
+         *  就会报错(因为确实没有这个文件，文件被删掉了),如果loader1.setPath
+         *  使用的G盘路径，一次运行结果：
+         *      load cn.andios.jvm.classloader.MyTest1 findClass invoked & classLoaderName：loader1
+         *      clazz1:356573597
+         *      ============================
+         *      load cn.andios.jvm.classloader.MyTest1 findClass invoked & classLoaderName：loader1
+         *      clazz2:2133927002
+         *   findClass方法中的那句话打印了，表明用了我们自己的类加载器，而且，
+         *   hashCode()不同，表明有loader1和loader2分别加载得到的clazz1和clazz2
+         *   不是同一个对象，
+         *
+         *
+         */
+    }
 }
