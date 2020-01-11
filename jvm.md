@@ -688,6 +688,90 @@ class MyChild5_3_Class_Extends_4 extends MyParent5_3_Class{
 - `App ClassLoader`
   - **java实现，加载`classpath`或`java.class.path`指定的目录中的jar**
 
+> 代码实例 cn.andios.jvm.classloader.MyTest19_1
+
+```java
+public class MyTest19_1 {
+    public static void main(String[] args) {
+        /**
+         *  打印三个层级的类加载器加载的类有哪些
+         *  其中，
+         *      C:\Program Files\Java\jdk1.8.0_171\jre\classes目录
+         *      为sun.boot.class.path加载所包含的目录
+         *
+         *      C:\Users\LSD\Desktop\jvm\jvm\jvm\target\classes;
+         *      即本项目的字节码文件目录为java.class.path加载所包
+         *      含的目录
+         *      因此，在MyTest19_2中，
+         *          1.如果我们把MyTest1.class拷到
+         *      C:\Program Files\Java\jdk1.8.0_171\jre\classes目录
+         *      下，那么加载MyTest1的不再是AppClassLoader，而是
+         *      Bootstrap ClassLoader,打印时为null
+         *          2.如果不移动MyTest1.class，则由AppClassLoader加载
+         *          3.如果把MyTest1.class复制到G盘，并把类路径下的MyTest1.class删掉，
+         *      则由我们自定义的MyTest16类加载器加载
+         */
+        //Bootstrap ClassLoader
+        System.out.println(System.getProperty("sun.boot.class.path"));
+
+        //Extension ClassLoader
+        System.out.println(System.getProperty("java.ext.dirs"));
+
+        //App ClassLoader
+        System.out.println(System.getProperty("java.class.path"));
+    }
+}
+```
+
+> 代码实例 cn.andios.jvm.classloader.MyTest19_2
+
+```java
+
+public class MyTest19_2 {
+    public static void main(String[] args) throws Exception {
+        //
+        MyTest16 loader1 = new MyTest16("loader1");
+        loader1.setPath("G:\\");
+
+        Class<?> clazz = loader1.loadClass("cn.andios.jvm.classloader.MyTest1");
+
+        System.out.println("clazz："+clazz.hashCode());
+        System.out.println("clazz loader："+clazz.getClassLoader());
+    }
+}
+```
+
+>  代码实例 cn.andios.jvm.classloader.MyTest20
+
+```java
+
+public class MyTest20 {
+    public static void main(String[] args) {
+        AESKeyGenerator aesKeyGenerator = new AESKeyGenerator();
+        /**
+         * result:
+         *      sun.misc.Launcher$ExtClassLoader@7ea987ac
+         *      sun.misc.Launcher$AppClassLoader@18b4aac2
+         *
+         *  AESKeyGenerator这个类默认是由扩展类加载器加载的
+         *
+         *  如果在当前项目的类路径下(即target/classes下)执行：
+         *  java -Djava.ext.dirs=./ cn.andios.jvm.classloader.MyTest20
+         *  就会报错：
+         *  java.lang.ClassNotFoundException: com.sun.crypto.provider.AESKeyGenerator
+         *  这个命令意思是：改变扩展类加载器加载的目录，改到当前目录，
+         *  而此时当前目录中并没有AESKeyGenerator.class，所以这里会
+         *  加载失败
+         *
+         */
+        System.out.println(aesKeyGenerator.getClass().getClassLoader());
+        System.out.println(MyTest20.class.getClassLoader());
+    }
+}
+```
+
+
+
 ### 获取类的Class对象
 
 > 代码实例 cn.andios.jvm.classloader.MyTest7
