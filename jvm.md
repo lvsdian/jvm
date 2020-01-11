@@ -954,16 +954,33 @@ public class MyTest16 extends ClassLoader{
         Class<?> clazz1 = loader1.loadClass("cn.andios.jvm.classloader.MyTest1");
         System.out.println("clazz1:"+clazz1.hashCode());
 
+
         System.out.println("============================");
 
+
         //创建一个自定义类加载器，名称是loader2,它的父类加载器是AppClassLoader
-        MyTest16 loader2 = new MyTest16("loader1");
+        MyTest16 loader2 = new MyTest16("loader2");
         //设置路径
-        //loader1.setPath("C:\\Users\\LSD\\Desktop\\jvm\\jvm\\jvm\\target\\classes\\");
+        //loader2.setPath("C:\\Users\\LSD\\Desktop\\jvm\\jvm\\jvm\\target\\classes\\");
         loader2.setPath("G:\\");
 
         Class<?> clazz2 = loader2.loadClass("cn.andios.jvm.classloader.MyTest1");
         System.out.println("clazz2:"+clazz2.hashCode());
+
+
+        System.out.println("****************************");
+
+
+        //创建一个自定义类加载器，名称是loader3,它的父类加载器是指定的loader1
+        //loader1和loader3都是MyTest16的实例，但是loader1可以成为loader3的父加载器，
+        //源于类加载器之间不是继承关系，而是一种包含关系
+        MyTest16 loader3 = new MyTest16(loader1,"loader3");
+        //设置路径
+        //loader3.setPath("C:\\Users\\LSD\\Desktop\\jvm\\jvm\\jvm\\target\\classes\\");
+        loader3.setPath("G:\\");
+
+        Class<?> clazz3 = loader3.loadClass("cn.andios.jvm.classloader.MyTest1");
+        System.out.println("clazz3:"+clazz3.hashCode());
         /**
          * result:
          *  把target下MyTest1.class文件拷贝一份到G盘如上目录，
@@ -971,14 +988,18 @@ public class MyTest16 extends ClassLoader{
          *  cn.andios.jvm.classloader.MyTest1.class文件，那么不管
          *  loader1.setPath用的C盘文件还是G盘文件，MyTest1这个类都由
          *  jdk的AppClassLoader来加载，一次运行的结果：
-         *      clazz1:1163157884
+         *     clazz1:1163157884
          *      ============================
          *      clazz2:1163157884
-         *   两个Class的hashcode()一样，说明加载的类一样
+         *      *********************************
+         *      clazz3:1163157884
+         *   3个Class的hashcode()一样，说明加载的类一样
          *
-         *   因为当classpath下存在MyTest1.class文件时，AppClassLoader试图从classpath
-         *   下加载这个文件成功了，所以轮不到我们自定义的类加载器来加载
-         *   当loader2尝试加载时，发现之前加载过了，所以直接拿过来，不会再加载
+         *   因为当classpath下存在MyTest1.class文件时，loader1的父加载器AppClassLoader
+         *   试图从classpath下加载这个文件成功了，所以轮不到我们自定义的类加载器来加载，
+         *   当loader2的父加载器(也是这个AppClassLoader)尝试加载时，发现之前加载过了，
+         *   所以直接拿过来，不会再加载，loader3的父加载器是loader1，loader1的父加载器又是
+         *   AppClassLoader,所以这3个hashCode()值一样，是同一个对象.
          *
          *  如果把target下MyTest1.class文件删掉，loader1.setPath使用的C盘路径，
          *  就会报错(因为确实没有这个文件，文件被删掉了),如果loader1.setPath
@@ -986,16 +1007,173 @@ public class MyTest16 extends ClassLoader{
          *      load cn.andios.jvm.classloader.MyTest1 findClass invoked & classLoaderName：loader1
          *      clazz1:356573597
          *      ============================
-         *      load cn.andios.jvm.classloader.MyTest1 findClass invoked & classLoaderName：loader1
+         *      load cn.andios.jvm.classloader.MyTest1 findClass invoked & classLoaderName：loader2
          *      clazz2:2133927002
-         *   findClass方法中的那句话打印了，表明用了我们自己的类加载器，而且，
-         *   hashCode()不同，表明有loader1和loader2分别加载得到的clazz1和clazz2
-         *   不是同一个对象，
-         *
-         *
+         *      *********************************
+         *      clazz3:356573597
+         *   当loader1的父加载器AppClassLoader尝试从classpath下加载时，发现文件不存在，
+         *   无法加载，所以由我们自定义的loader1加载，loader2同理，所以由loader1和loader2
+         *   分别加载得到的clazz1和clazz2不是同一个对象，对于loader3，它的父类加载器是loader1，
+         *   所以它会委托给父类加载器loader1去加载，所以得到的对象的hashCode()与loader1加载的一样
          */
+
     }
 }
 
+```
+
+### 命名空间
+
+- 每个类加载器都有自己的命名空间，**命名空间由该加载器及所有父加载器所加载的类组成**
+- 在同一个命名空间中，不会出现类的完整名字(包括类的包名)相同的两个类
+- 在不同的命名空间中，有可能会出现类的完整名字(包括类的包名)相同的两个类
+- 子类加载器所加载的类可以访问父类加载器所加载的类
+- 父类加载器所加载的类不能访问子类加载器所加载的类
+
+> 代码实例 cn.andios.jvm.classloader.MyCat
+
+```java
+public class MyCat {
+    public MyCat(){
+        System.out.println("MyCat is loaded by:"+this.getClass().getClassLoader());
+        //System.out.println("form MyCat:"+MySample.class);
+    }
+}
+```
+
+> 代码实例 cn.andios.jvm.classloader.MySample
+
+```java
+public class MySample {
+    public MySample(){
+        System.out.println("MySample is loaded by:"+ this.getClass().getClassLoader());
+        new MyCat();
+        System.out.println("form MySample:"+MyCat.class);
+    }
+}
+```
+
+> 代码实例 cn.andios.jvm.classloader.MyTest18_1
+
+```java
+public class MyTest18_1 {
+    public static void main(String[] args) throws Exception {
+        MyTest16 loader1 = new MyTest16("loader1");
+        //这里target下的MySample.class文件没有删，所以使用的jvm的类加载器
+        Class<?> clazz = loader1.loadClass("cn.andios.jvm.classloader.MySample");
+        System.out.println("class:"+ clazz.hashCode());
+
+        //如果注释这一行，那么并不会对MySample实例化，即MySample构造方法不会被调用，
+        //因此不会实例化MyCat对象，即没有对MyCat进行主动使用，这里就不会加载MyCat
+        Object obj = clazz.newInstance();
+    }
+}
+
+```
+
+> 代码实例 cn.andios.jvm.classloader.MyTest18_2
+
+```java
+public class MyTest18_2 {
+    public static void main(String[] args) throws Exception {
+        MyTest16 loader1 = new MyTest16("loader1");
+        //拷贝target下面的MySample.class和MyCat.class到G盘如下目录
+        //删掉target下面的MySample.class和MyCat.class
+        //指定loader的path为G盘
+        //所以这里加载MySample和MyCat是用的我们自定义的类加载器MyTest16
+
+        //如果只删掉target下面的MyCat.class文件，不删除MySample.class，执行时
+        //MySample被AppClassLoader正常加载，但MyCat会报错ClassNotFoundException
+
+        //如果只删掉target下面的MySample.class，保留MyCat.class文件，执行时
+        //MySample会由自定义类加载器MyTest16加载，MyCat由AppClassLoader加载
+        //这种情况下，
+        //      如果MyCat中有对MySample的引用(如MyCat构造器中打印MySample.class，
+        //  此时MySample中没有打印MyCat.class，只有new MyCat() )
+        //  就会报错MySample ClassNotFoundException,原因：MyCat由AppClassLoader加载，
+        //  MySample由MyTest16加载，AppClassLoader是MyTest16的父类，所以由
+        //  AppClassLoader所加载的类当中就看不到子类MyTest16所加载的类.
+        //      如果MySample中有对MyCat的引用(如MySample构造器中打印MyCat.class)
+        //  执行时并不会报错，MySample中会正常打印MyCat.class.即在子类加载器加载的类中
+        //  访问父类加载器加载的类
+
+        /**
+         * 以上总结：
+         *      子类加载器所加载的类可以访问父类加载器所加载的类
+         *      父类加载器所加载的类不能访问子类加载器所加载的类
+         */
+        loader1.setPath("G:\\");
+        Class<?> clazz = loader1.loadClass("cn.andios.jvm.classloader.MySample");
+        System.out.println("class:"+ clazz.hashCode());
+
+        //如果注释这一行，那么并不会对MySample实例化，即MySample构造方法不会被调用，
+        //因此不会实例化MyCat对象，即没有对MyCat进行主动使用，这里就不会加载MyCat
+        Object obj = clazz.newInstance();
+    }
+}
+```
+
+
+
+### 类的卸载
+
+- 当MySample类被加载、连接、初始化后，它的生命周期就开始了。当代表MySample类的Class对象不再被引用时，即不可触及时，Class对象就会结束生命周期，MySample类在方法区内的数据也会被卸载，从而结束了MySample类的生命周期。
+- 一个类何时结束生命周期，取决于代表它的Class对象何时结束生命周期。
+
+![](img/class_unloading01.png)
+
+- ClassLoader，Class，Class实例之间的引用
+  - 类加载器内部实现中，用一个集合来存放所加载的类；
+  - 一个Class对象的`getClassLoader()`方法能获得它的类加载器
+  - 一个类的实例总是引用代表这个类的Class对象，Object类中定义了`getClass()`方法；
+  - 所有的java类都有一个静态属性`class`，它引用代表这个类的Class对象。
+- 由用户自定义的类加载器所加载的类是可以被卸载的
+
+> 代码实例 cn.andios.jvm.classloader.MyTest17
+
+```java
+public class MyTest17 {
+    public static void main(String[] args) throws Exception {
+        /**
+         * result:
+         *      ====================
+         *      load cn.andios.jvm.classloader.MyTest1 findClass invoked & classLoaderName：loader1
+         *      [Unloading class cn.andios.jvm.classloader.MyTest1 0x0000000100061028]
+         *
+         * 查看类卸载的虚拟机参数：-XX:+TraceClassUnloading
+         *
+         * 第一句是MyTest16中findClass方法打印的(如果打印了这句话，
+         *  表示由我们自己的类加载器加载，如果没打印，表示由jvm的类加载器加载)，
+         * 第二句即表示类卸载，
+         * test1方法中的MyTest17由jvm的类加载器加载，所以不会发生类卸载
+         * test2中用我们自定义的MyTest16类加载器，所以会发生类卸载
+         */
+        //发生类卸载
+        test1();
+        System.out.println("====================");
+        //不会发生类卸载
+        test2();
+    }
+    private static void test1() throws Exception {
+        MyTest17 test1 = new MyTest17();
+        test1 = null;
+        System.gc();
+    }
+    private static void test2() throws Exception {
+        MyTest16 myLoader = new MyTest16("myLoader");
+        /**
+         * 删掉target下的MyTest.class文件才会使用我们自己的类加载器，
+         * 否则会使用jvm的类加载器，删除target下的MyTest.class后，
+         * 需要制定myLoader.setPath，否则报FileNotFoundException
+         */
+        myLoader.setPath("G:\\");
+        Class<?> clazz = myLoader.loadClass("cn.andios.jvm.classloader.MyTest1");
+
+        myLoader = null;
+        clazz = null;
+
+        System.gc();
+    }
+}
 ```
 
