@@ -6,6 +6,13 @@
   * [类的初始化](#%E7%B1%BB%E7%9A%84%E5%88%9D%E5%A7%8B%E5%8C%96)
   * [类的初始化时机](#%E7%B1%BB%E7%9A%84%E5%88%9D%E5%A7%8B%E5%8C%96%E6%97%B6%E6%9C%BA)
   * [类加载器](#%E7%B1%BB%E5%8A%A0%E8%BD%BD%E5%99%A8)
+  * [获取类的Class对象](#%E8%8E%B7%E5%8F%96%E7%B1%BB%E7%9A%84class%E5%AF%B9%E8%B1%A1)
+  * [java\.lang\.ClassLoader](#javalangclassloader)
+    * [java\.lang\.ClassLoader\#findClass](#javalangclassloaderfindclass)
+    * [java\.lang\.ClassLoader\#defineClass(java\.lang\.String, byte[], int, int)](#javalangclassloaderdefineclassjavalangstring-byte-int-int)
+    * [java\.lang\.ClassLoader\#loadClass(java\.lang\.String , boolean resolve)](#javalangclassloaderloadclassjavalangstring--boolean-resolve)
+  * [命名空间](#%E5%91%BD%E5%90%8D%E7%A9%BA%E9%97%B4)
+  * [类的卸载](#%E7%B1%BB%E7%9A%84%E5%8D%B8%E8%BD%BD)
 
 ## 类加载
 
@@ -1193,6 +1200,80 @@ public class MyTest18_2 {
         //如果注释这一行，那么并不会对MySample实例化，即MySample构造方法不会被调用，
         //因此不会实例化MyCat对象，即没有对MyCat进行主动使用，这里就不会加载MyCat
         Object obj = clazz.newInstance();
+    }
+}
+```
+
+![](img/namespace01.png)
+
+> 代码实例 cn.andios.jvm.classloader.MyTest21
+
+```java
+public class MyTest21 {
+    public static void main(String[] args) throws Exception {
+        MyTest16 loader1 = new MyTest16("loader1");
+        MyTest16 loader2 = new MyTest16("loader2");
+
+        Class<?> clazz1 = loader1.loadClass("cn.andios.jvm.classloader.MyPerson");
+        Class<?> clazz2 = loader2.loadClass("cn.andios.jvm.classloader.MyPerson");
+
+        //不删除target下的MyPerson.class文件下，即不删除类路径下的MyPerson.class文件
+        //此时clazz1由AppClassLoader加载，clazz2直接使用AppClassLoader
+        //第一次加载MyPerson.class的结果，所以为true
+        System.out.println(clazz1 == clazz2);
+
+        Object obj1 = clazz1.newInstance();
+        Object obj2 = clazz2.newInstance();
+
+        Method method = clazz1.getMethod("setMyPerson", Object.class);
+        //即：obj1.setMyPerson(obj2)
+        //这里不会报错
+        method.invoke(obj1,obj2);
+    }
+}
+```
+
+>  代码实例 cn.andios.jvm.classloader.MyTest22
+
+```java
+public class MyTest22 {
+    public static void main(String[] args) throws Exception {
+        /**
+         * 定义类加载器：真正加载字节码的类加载器
+         * 初始化类加载器：其他类加载器称为初始类加载器
+         */
+
+        MyTest16 loader1 = new MyTest16("loader1");
+        MyTest16 loader2 = new MyTest16("loader2");
+
+        //拷贝target下的MyPerson.class文件到G盘(移出类路径)，并删除
+        //target下的MyPerson.class
+        loader1.setPath("G:\\");
+        loader2.setPath("G:\\");
+
+        Class<?> clazz1 = loader1.loadClass("cn.andios.jvm.classloader.MyPerson");
+        Class<?> clazz2 = loader2.loadClass("cn.andios.jvm.classloader.MyPerson");
+
+        //此时clazz1由loader1加载，clazz2由loader2加载，所以结果为false
+        System.out.println(clazz1 == clazz2);
+
+        Object obj1 = clazz1.newInstance();
+        Object obj2 = clazz2.newInstance();
+
+        Method method = clazz1.getMethod("setMyPerson", Object.class);
+        //即：obj1.setMyPerson(obj2)
+        /**
+         * result：
+         *      java.lang.ClassCastException:
+         *      cn.andios.jvm.classloader.MyPerson
+         *      cannot be cast to
+         *      cn.andios.jvm.classloader.MyPerson
+         *
+         *  loader1和loader2属于两个不同的命名空间，没有直接或间接的父子关系，
+         *  所以它们加载的类clazz1和clazz2互相不可见
+         *  所以这里会报错
+         */
+        method.invoke(obj1,obj2);
     }
 }
 ```
