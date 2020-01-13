@@ -23,6 +23,10 @@ public class MyTest16 extends ClassLoader{
         this.classLoaderName = classLoaderName;
     }
 
+    public MyTest16 (ClassLoader classLoader){
+        super(classLoader);
+    }
+
     /**
      * 父加载器为指定的parent的构造方法
      * @param parent

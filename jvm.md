@@ -687,13 +687,15 @@ class MyChild5_3_Class_Extends_4 extends MyParent5_3_Class{
 <img src="img/class_loader02.png" style="zoom:80%;" />
 
 - 除了以上虚拟机自带的加载器外，用户还可以定制自己的类加载器。java提供了抽象类`java.lang.ClassLoader`,所有用户自定义的类加载器都应该继承`ClassLoader`类。
-
 - `Bootstrap ClassLoader`
   - **c++实现，加载`$JAVA_JOME/jre/lib/rt.jar`**
 - `Extension ClassLoader`
   - **java实现，加载`$JAVA_HOME/jre/lib/ext`下的jar或者加载`java.ext.dirs`指定的目录中的jar**
 - `App ClassLoader`
   - **java实现，加载`classpath`或`java.class.path`指定的目录中的jar**
+- 内建于jvm中的启动类加载器会加载`java.lang.ClassLoader`及其他的java平台类，当jvm启动时，一块特殊的机器码会运行，它会加载扩展类加载器与系统类加载器，这块特殊的机器码叫做启动类加载器。
+- 启动类加载器并不是java类，其他类加载器都是java类。启动类加载器是特定于平台的机器指令，它负责开启整个加载过程，总归要有一个组件来加载第一个java类加载器，从而让整个加载过程能够顺利进行下去，加载第一个纯java类加载器就是启动类加载器的职责。
+- 启动类加载器还会负责加载提供`JRE`正常运行所需要的基本组件，这包括`java.util`和`java.lang`包等等。
 
 > 代码实例 cn.andios.jvm.classloader.MyTest19_1
 
@@ -775,6 +777,46 @@ public class MyTest20 {
         System.out.println(MyTest20.class.getClassLoader());
     }
 }
+```
+
+> 代码实例 cn.andios.jvm.classloader.MyTest23
+
+```java
+public class MyTest23 {
+    static{
+        System.out.println("MyTest23 initialized");
+    }
+
+    public static void main(String[] args) {
+        /**
+         * result:
+         *      MyTest23 initialized
+         *      sun.misc.Launcher$AppClassLoader@73d16e93
+         *      sun.misc.Launcher$AppClassLoader@73d16e93
+         *
+         *  MyTest23.class类在类路径下，所以由AppClassLoader加载
+         * 如果在当前目录的target下执行：
+         *  java -Djava.ext.dirs=./ cn.andios.jvm.classloader.MyTest23
+         *  即把扩展类加载的目录指定到当前的类路径，结果还是
+         *  和上面一样，
+         *  原因：扩展类加载的.class文件需以jar包形式存在，
+         *      这里类路径下的.class文件并不是以jar包形式存在
+         *  在target的classes目录下执行：
+         *  jar cvf test.jar cn/andios/jvm/classloader/MyTest1.class
+         *  即将MyTest1.class打成test.jar放在classes目录下，与cn目录平级
+         *  此时再执行：
+         *  java -Djava.ext.dirs=./ cn.andios.jvm.classloader.MyTest23
+         *  result：
+         *      MyTest23 initialized
+         *      sun.misc.Launcher$AppClassLoader@2a139a55
+         *      sun.misc.Launcher$ExtClassLoader@3d4eac69
+         *   可以发现，MyTest1.class由扩展类加载器去加载了
+         */
+        System.out.println(MyTest23.class.getClassLoader());
+        System.out.println(MyTest1.class.getClassLoader());
+    }
+}
+
 ```
 
 
@@ -1113,6 +1155,264 @@ public class MyTest16 extends ClassLoader{
 
 ```
 
+#### java.lang.ClassLoader#getSystemClassLoader
+
+> javadoc：
+>
+> 返回用于委托的系统类加载器，是新的`ClassLoader`实例的默认委托双亲，通常也是用于启动应用的类加载器。
+>
+> 在运行期启动序列中很早就被调用，它会创建系统类加载器并且设置创建出来的系统类加载器为调用线程的上下文类加载器。
+>
+> 默认的系统类加载器是一个与这个类实现相关的实例
+>
+> 如果在这个方法第一次被调用时系统属性`java.system.class.loader`定义了，那么这个属性的值就作为系统类加载器的名字。这个类(这个属性值对应的类)会使用默认的系统类加载器(默认的系统类加载器即`AppClassLoader`)来加载并且这个类要定义一个`public`的构造器接收一个ClassLoader类型的参数用来作为代理父类，默认的系统类加载器会作为参数传入这个构造器创建一个实例(即以`AppClassLoader`为代理父类创建`java.system.class.loader`属性值的实例)，返回的类加载器(即创建的`java.system.class.loader`属性值的实例)就被定义为系统类加载器。
+
+> 代码实例 cn.andios.jvm.classloader.MyTest24 
+
+```java
+/**
+ * 在运行期，一个java类是由该类的完全限定名(binary name)和用于加载该类的定义类加载器(defining classloader)所共同决定的
+ * 如果同样名字(相同限定名)的类是由两个不同的类加载器所加载，那么这些了就是不同的，即使.class文件完全一样，并且从同一位置加载亦如此
+ */
+public class MyTest24 {
+    public static void main(String[] args) {
+        /**
+         * result:
+         *      ...
+         * 如果在target的classes目录下执行：
+         * java cn/andios/jvm/classloader/MyTest24
+         * 可以发现执行结果与上面的result不同
+         *  reason:
+         *      idea会自己往classpath里面追加一些内容
+         * 如果在target的classes下执行:
+         * java -Dsun.boot.class.path=./ cn.andios/jvm.classloader.MyTest24
+         * 即把启动类加载器的加载目录改到当前目录，
+         * result：
+         *      Error occurred during initialization of VM
+         *      java/lang/NoClassDefFoundError: java/lang/Object
+         * 因为Object类是父类，加载时肯定会先加载Object,但此目录下并没有Object
+         */
+        //Bootstrap ClassLoader
+        System.out.println(System.getProperty("sun.boot.class.path"));
+
+        //Extension ClassLoader
+        System.out.println(System.getProperty("java.ext.dirs"));
+
+        //App ClassLoader
+        System.out.println(System.getProperty("java.class.path"));
+
+        /**
+         * 如果在idea中运行，result:
+         *      sun.misc.Launcher$AppClassLoader@18b4aac2
+         * 因为没有指定 java.system.class.loader
+         * 如果在target下的classes目录执行：
+         *      java -Djava.system.class.loader=cn.andios.jvm.classloader.MyTest16  cn.andios.jvm.classloader.MyTest24
+         * 即指定java.system.class.loader(注意：MyTest16中要定义公共的接收ClassLoader对象为唯一参数的构造器)，那么result：
+         *      cn.andios.jvm.classloader.MyTest16@6d06d69c
+         *
+         */
+        System.out.println(ClassLoader.getSystemClassLoader());
+    }
+}
+```
+
+> java.lang.ClassLoader#getSystemClassLoader源码分析
+
+```java
+    // 系统类加载器
+    private static ClassLoader scl;
+
+    // 如果设置了系统类加载器这个属性就为true
+    private static boolean sclSet;
+
+	public static ClassLoader getSystemClassLoader() {
+        initSystemClassLoader();
+        if (scl == null) {
+            return null;
+        }
+        SecurityManager sm = System.getSecurityManager();
+        if (sm != null) {
+            checkClassLoaderPermission(scl, Reflection.getCallerClass());
+        }
+        return scl;
+    }
+
+    private static synchronized void initSystemClassLoader() {
+        //如果系统类类加载器没有被设置
+        if (!sclSet) {
+            if (scl != null)
+                //如果系统类加载器没有被设置，但系统类加载器又不为空，互相矛盾，直接抛异常
+                throw new IllegalStateException("recursive invocation");
+            //sun.misc.Launcher.getLauncher()会得到一个sun.misc.Launcher实例，
+            //这个Launcher实例的构造方法见下面的代码
+            sun.misc.Launcher l = sun.misc.Launcher.getLauncher();
+            if (l != null) {
+                Throwable oops = null;
+                //这里从中launcher得到的是AppClassLoader，赋给系统类加载器
+                scl = l.getClassLoader();
+                try {
+                    //SystemClassLoaderAction是ClassLoader类中的非public类，见下面的分析
+                    scl = AccessController.doPrivileged(
+                        new SystemClassLoaderAction(scl));
+                //异常处理 
+                } catch (PrivilegedActionException pae) {
+                    oops = pae.getCause();
+                    if (oops instanceof InvocationTargetException) {
+                        oops = oops.getCause();
+                    }
+                }
+                if (oops != null) {
+                    if (oops instanceof Error) {
+                        throw (Error) oops;
+                    } else {
+                        // wrap the exception
+                        throw new Error(oops);
+                    }
+                }
+            }
+            //表示系统类加载器设置完毕
+            sclSet = true;
+        }
+    }
+/** 
+ * ClassLoader中的非public类，判断用户是否自定义设置系统类加载器
+ * 如果没有指定，就用原来的，即AppClassLoader
+ * 如果指定了，就用用户指定的
+ */
+class SystemClassLoaderAction
+    implements PrivilegedExceptionAction<ClassLoader> {
+    private ClassLoader parent;
+
+    SystemClassLoaderAction(ClassLoader parent) {
+        this.parent = parent;
+    }
+
+    public ClassLoader run() throws Exception {
+        //获取系统属性java.system.class.loader
+        String cls = System.getProperty("java.system.class.loader");
+        //如果为空，说明没有设置，那么系统类加载器就是parent，在initSystemClassLoader方法中传入			//SystemClassLoaderAction构造器中的parent是scl，即AppClassLoader
+        if (cls == null) {
+            return parent;
+        }
+		//如果已经设置，即用户已经自定义，就用用户指定的
+        Constructor<?> ctor = Class.forName(cls, true, parent)
+            .getDeclaredConstructor(new Class<?>[] { ClassLoader.class });
+        ClassLoader sys = (ClassLoader) ctor.newInstance(
+            new Object[] { parent });
+        //设置线程上下文类加载器
+        Thread.currentThread().setContextClassLoader(sys);
+        return sys;
+    }
+}
+```
+
+### sun.misc.Launcher
+
+```java
+/** 构造器 */    
+public Launcher() {
+	//创建扩展类加载器
+    Launcher.ExtClassLoader var1;
+    try {
+        //调用getExtClassLoader()方法赋值扩展类加载器，如果不能赋值，直接抛异常
+        //getExtClassLoader()方法大概步骤：
+        //1.根据java.ext.dirs系统属性指定的目录，获取目录下的file组成File数组
+        //2.读取每个file new出扩展类加载器
+        var1 = Launcher.ExtClassLoader.getExtClassLoader();
+    } catch (IOException var10) {
+        throw new InternalError("Could not create extension class loader", var10);
+    }
+
+    try {
+        //以扩展类加载器为参数创建AppClassLoader
+        //getExtClassLoader()方法大概步骤：
+        //1.从系统属性java.class.path指定的目录中构造File类型数组
+        //2.根据File文件路径构造URL[],再结合扩展类加载器一起两个参数new出AppClassLoader
+        this.loader = Launcher.AppClassLoader.getAppClassLoader(var1);
+    } catch (IOException var9) {
+        throw new InternalError("Could not create application class loader", var9);
+    }
+	//为当前的执行线程设置上下文类加载器：AppClassLoader
+    Thread.currentThread().setContextClassLoader(this.loader);
+    //是否指定了安全管理器属性值
+    String var2 = System.getProperty("java.security.manager");
+    if (var2 != null) {
+        SecurityManager var3 = null;
+        if (!"".equals(var2) && !"default".equals(var2)) {
+            try {
+                //调用反射创建安全管理器实例
+                var3 = (SecurityManager)this.loader.loadClass(var2).newInstance();
+            } catch (IllegalAccessException var5) {
+                ;
+            } catch (InstantiationException var6) {
+                ;
+            } catch (ClassNotFoundException var7) {
+                ;
+            } catch (ClassCastException var8) {
+                ;
+            }
+        } else {
+            //new 安全管理器实例
+            var3 = new SecurityManager();
+        }
+
+        if (var3 == null) {
+            throw new InternalError("Could not create SecurityManager: " + var2);
+        }
+		//设置系统的安全管理器
+        System.setSecurityManager(var3);
+    }
+
+}
+```
+
+### java.lang.Class#forName(java.lang.String, boolean, java.lang.ClassLoader)
+
+> javadoc：
+>
+> 用给定的类加载器返回一个与给定字符串名字相关联的接口或类的Class对象。给定接口或类的完全限定名，这个类加载器会尝试定位、加载、链接这个接口或类。给定的类加载器用来加载类或接口，如果类加载器参数为null，那么就用启动类加载器来加载。这个类只有在`initialize`参数为`true`并且之前没有被初始化的情况下才会被初始化。
+>
+> 如果参数name是一个原生的类型或void，它会尝试在未命名的包中定位用户定义的类。因此这个方法不能用来获取原生类型或者void类型的Class对象。
+>
+> 如果name是一个数组类型，那么数组的元素类型的类会被加载但不会被初始化。
+>
+> 比如：
+>
+> `Class.forName("Foo")`
+>
+> 等价于
+>
+> `Class.forName("Foo", true, this.getClass().getClassLoader())`
+> 这个方法会抛出与加载、链接或初始化相关的错误，如在`Java Language Specification` 的12.2, 12.3,12.4章节中指定的。
+>
+> 这个方法并不会检查所请求的类对它的调用者来说是否是可以访问的。
+
+```java
+    public static Class<?> forName(String name, boolean initialize,
+                                   ClassLoader loader)
+        throws ClassNotFoundException
+    {
+        Class<?> caller = null;
+        SecurityManager sm = System.getSecurityManager();
+        if (sm != null) {
+            //获取到调用forName这个方法的类的Class对象
+            caller = Reflection.getCallerClass();
+            if (sun.misc.VM.isSystemDomainLoader(loader)) {
+            	//获取到调用forName这个方法的类的Class对象的类加载器
+                ClassLoader ccl = ClassLoader.getClassLoader(caller);
+                if (!sun.misc.VM.isSystemDomainLoader(ccl)) {
+                    sm.checkPermission(
+                        SecurityConstants.GET_CLASSLOADER_PERMISSION);
+                }
+            }
+        }
+        //forName0是native方法
+        return forName0(name, initialize, loader, caller);
+    }
+```
+
+
+
 ### 命名空间
 
 - 每个类加载器都有自己的命名空间，**命名空间由该加载器及所有父加载器所加载的类组成**
@@ -1278,7 +1578,21 @@ public class MyTest22 {
 }
 ```
 
+### 双亲委派模型好处
 
+1. 可以确保java核心库的类型安全。所有的java应用都至少会引用`java.lang.Object`，也就是说在运行期，`java.lang.Object`这个类在运行期会被加载到jvm中，如果这个加载过程由java应用自己的类加载器所完成的，那么很可能会在jvm中存在多个版本的`java.lang.Object`类，
+
+   > 代码实例 cn.andios.jvm.classloader.MyTest22
+
+   而且这些类之间还是不兼容的，相互不可见的(正是命名空间发挥着作用)。借助双亲委派机制，java核心类库中的类加载工作都是由启动类加载器来统一完成，从而确保了java应用所使用的都是同一版本的java核心类库。
+
+2. 可以确保java核心类库所提供的类不会被自定义的类所替代。
+
+3. 不同的类加载器可以为相同名称(binary name)的类创建额外的命名空间。相同名称的类可以并存在jvm中，只需要用不同的类加载器来加载它们即可。
+
+   > 代码实例 cn.andios.jvm.classloader.MyTest22
+
+   不同类加载起所加载的类之间是不兼容的，这就相当于在jvm内部创建了一个又一个相互隔离的java类空间，这类技术在很多框架中都得到了实际应用。
 
 ### 类的卸载
 
