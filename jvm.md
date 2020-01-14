@@ -11,7 +11,13 @@
     * [java\.lang\.ClassLoader\#findClass](#javalangclassloaderfindclass)
     * [java\.lang\.ClassLoader\#defineClass(java\.lang\.String, byte[], int, int)](#javalangclassloaderdefineclassjavalangstring-byte-int-int)
     * [java\.lang\.ClassLoader\#loadClass(java\.lang\.String , boolean resolve)](#javalangclassloaderloadclassjavalangstring--boolean-resolve)
+    * [java\.lang\.ClassLoader\#getSystemClassLoader](#javalangclassloadergetsystemclassloader)
+  * [sun\.misc\.Launcher](#sunmisclauncher)
+  * [java\.lang\.Class\#forName(java\.lang\.String, boolean, java\.lang\.ClassLoader)](#javalangclassfornamejavalangstring-boolean-javalangclassloader)
   * [命名空间](#%E5%91%BD%E5%90%8D%E7%A9%BA%E9%97%B4)
+  * [双亲委派模型好处](#%E5%8F%8C%E4%BA%B2%E5%A7%94%E6%B4%BE%E6%A8%A1%E5%9E%8B%E5%A5%BD%E5%A4%84)
+  * [ContextClassLoader](#contextclassloader)
+  * [java\.util\.ServiceLoader](#javautilserviceloader)
   * [类的卸载](#%E7%B1%BB%E7%9A%84%E5%8D%B8%E8%BD%BD)
 
 ## 类加载
@@ -1594,75 +1600,16 @@ public class MyTest22 {
 
    不同类加载起所加载的类之间是不兼容的，这就相当于在jvm内部创建了一个又一个相互隔离的java类空间，这类技术在很多框架中都得到了实际应用。
 
-### 类的卸载
-
-- 当MySample类被加载、连接、初始化后，它的生命周期就开始了。当代表MySample类的Class对象不再被引用时，即不可触及时，Class对象就会结束生命周期，MySample类在方法区内的数据也会被卸载，从而结束了MySample类的生命周期。
-- 一个类何时结束生命周期，取决于代表它的Class对象何时结束生命周期。
-
-![](img/class_unloading01.png)
-
-- ClassLoader，Class，Class实例之间的引用
-  - 类加载器内部实现中，用一个集合来存放所加载的类；
-  - 一个Class对象的`getClassLoader()`方法能获得它的类加载器
-  - 一个类的实例总是引用代表这个类的Class对象，Object类中定义了`getClass()`方法；
-  - 所有的java类都有一个静态属性`class`，它引用代表这个类的Class对象。
-- 由用户自定义的类加载器所加载的类是可以被卸载的
-
-> 代码实例 cn.andios.jvm.classloader.MyTest17
-
-```java
-public class MyTest17 {
-    public static void main(String[] args) throws Exception {
-        /**
-         * result:
-         *      ====================
-         *      load cn.andios.jvm.classloader.MyTest1 findClass invoked & classLoaderName：loader1
-         *      [Unloading class cn.andios.jvm.classloader.MyTest1 0x0000000100061028]
-         *
-         * 查看类卸载的虚拟机参数：-XX:+TraceClassUnloading
-         *
-         * 第一句是MyTest16中findClass方法打印的(如果打印了这句话，
-         *  表示由我们自己的类加载器加载，如果没打印，表示由jvm的类加载器加载)，
-         * 第二句即表示类卸载，
-         * test1方法中的MyTest17由jvm的类加载器加载，所以不会发生类卸载
-         * test2中用我们自定义的MyTest16类加载器，所以会发生类卸载
-         */
-        //发生类卸载
-        test1();
-        System.out.println("====================");
-        //不会发生类卸载
-        test2();
-    }
-    private static void test1() throws Exception {
-        MyTest17 test1 = new MyTest17();
-        test1 = null;
-        System.gc();
-    }
-    private static void test2() throws Exception {
-        MyTest16 myLoader = new MyTest16("myLoader");
-        /**
-         * 删掉target下的MyTest.class文件才会使用我们自己的类加载器，
-         * 否则会使用jvm的类加载器，删除target下的MyTest.class后，
-         * 需要制定myLoader.setPath，否则报FileNotFoundException
-         */
-        myLoader.setPath("G:\\");
-        Class<?> clazz = myLoader.loadClass("cn.andios.jvm.classloader.MyTest1");
-
-        myLoader = null;
-        clazz = null;
-
-        System.gc();
-    }
-}
-```
-
 ### ContextClassLoader
 
 - 当前类加载器(`Current ClassLoader`)：加载当前类的类加载器
 
 - 每个类都会使用自己的类加载器(即加载自身的类加载器)去加载其他类(指这个类所依赖的其它的类)即如果ClassX引用了ClassY,那么ClassX的类加载器就会尝试加载ClassY,前提是ClassY尚未被加载。此时ClassX的类加载器就是当前类加载器
+
 - 线程上下文类加载器(`ThreadContextClassLoader`)是从jdk1.2开始引入的，Thread类中的`getContextClassLoader`与`setContextClassLoader`分别用来获取和设置线程上下文类加载器，如果没有设置，线程将继承其父线程的上下文类加载器
--  java应用运行时初始线程的上下文类加载器是系统类加载器，在线程中运行的代码可以通过该类加载器来加载类与资源
+
+- java应用运行时初始线程的上下文类加载器是系统类加载器，在线程中运行的代码可以通过该类加载器来加载类与资源
+
 - 线程上下文类加载器的重要性：
   - **父`ClassLoader`可以使用当前线程`Thread.currentThread().getContextClassLoader()`所得到的`ClassLoader`所加载的类，这就改变了父`ClassLoader`不能使用子`ClassLoader`或是其他没有直接父子关系的`ClassLoader`所加载的类的情况，即改变了双亲委托模型。**线程上下文类加载器就是当前线程的Current ClassLoader。
   - 在双亲委托模型下，类加载是由下至上的，即下层的类加载器会委托上层进行加载，但对于`SPI(Service Provider Interface)`来说，有些接口是java核心库提供的，而java核心库由启动类加载器来加载，这些接口的实现又来自不同的厂商，java启动类加载器不会加载其他来源的jar包，这样传统的双亲委托模型就无法满足SPI的要求。而通过给当前线程设置上下文类加载器，就可以由设置的类加载器来实现对接口或实现类的加载。
@@ -1682,7 +1629,55 @@ public class MyTest17 {
   ```
 
 - 如果一个类由类加载器A加载，那么这个类的依赖类也由相同的类加载器加载(如果这个依赖类之前没有被加载过的话)，`ContextClassLoader`的作用就是为了破坏java的类加载委托机制。
+
 - 当高层提供了统一的接口让低层去实现，同时又要在高层加载(或实例化)低层的类时，就必须要通过线程上下文类加载器来帮助高层的ClassLoader找到并加载该类。
+
+> 代码实例 cn.andios.jvm.classloader.MyTest27
+
+```java
+/**
+ * 加mysql驱动依赖
+ */
+public class MyTest27 {
+    public static void main(String[] args) {
+        //Thread.currentThread().setContextClassLoader(MyTest23.class.getClassLoader().getParent());
+
+        /**
+         *  ServiceLoader在rt.jar下，由启动类来加载，但启动类不能加载到classpath中的类，那么mysql的驱动类就无法加载。
+         *  所以在ServiceLoader.load()方法中获取了线程上下文类加载器：
+         *      ClassLoader cl = Thread.currentThread().getContextClassLoader()
+         *  在Launcher类中可以看到线程上下文类加载器是系统类加载器，所以后面操作的都是系统类加载器，因此
+         *  mysql驱动可以正常加载
+         *  验证：
+         *      如上，设置当前线程上下文类加载器为MyTest23.class.getClassLoader().getParent()，即扩展类加载器，再
+         *      运行下面的代码，结果不一样了
+         */
+        ServiceLoader<Driver> loader = ServiceLoader.load(Driver.class);
+        Iterator<Driver> iterator = loader.iterator();
+        /**
+         * result：
+         *      driver:class com.mysql.jdbc.Driver,loader:sun.misc.Launcher$AppClassLoader@18b4aac2
+         *      driver:class com.mysql.fabric.jdbc.FabricMySQLDriver,loader:sun.misc.Launcher$AppClassLoader@18b4aac2
+         *      当前线程上下文类加载器：sun.misc.Launcher$AppClassLoader@18b4aac2
+         *      ServiceLoader类加载器：null
+         *
+         *  如果设置当前线程上下文类加载器为MyTest23.class.getClassLoader().getParent()，即扩展类加载器后，
+         *  result：
+         *      当前线程上下文类加载器：sun.misc.Launcher$ExtClassLoader@1540e19d
+         *      ServiceLoader类加载器：null
+         *      因为扩展类加载器不会寻找当前应用的classpath，所以加载不到mysql驱动
+         */
+        while (iterator.hasNext()){
+            Driver driver = iterator.next();
+            System.out.println("driver:"+driver.getClass()+",loader:"+driver.getClass().getClassLoader());
+        }
+        System.out.println("当前线程上下文类加载器："+Thread.currentThread().getContextClassLoader());
+        System.out.println("ServiceLoader类加载器："+ServiceLoader.class.getClassLoader());
+    }
+}
+```
+
+
 
 ### java.util.ServiceLoader
 
@@ -1745,10 +1740,68 @@ public class MyTest17 {
 > Since：jdk1.6
 >
 > 泛型：即由这个加载器加载的服务类型
->
-> 
->
->  
->
-> 
+
+### 类的卸载
+
+- 当MySample类被加载、连接、初始化后，它的生命周期就开始了。当代表MySample类的Class对象不再被引用时，即不可触及时，Class对象就会结束生命周期，MySample类在方法区内的数据也会被卸载，从而结束了MySample类的生命周期。
+- 一个类何时结束生命周期，取决于代表它的Class对象何时结束生命周期。
+
+![](img/class_unloading01.png)
+
+- ClassLoader，Class，Class实例之间的引用
+  - 类加载器内部实现中，用一个集合来存放所加载的类；
+  - 一个Class对象的`getClassLoader()`方法能获得它的类加载器
+  - 一个类的实例总是引用代表这个类的Class对象，Object类中定义了`getClass()`方法；
+  - 所有的java类都有一个静态属性`class`，它引用代表这个类的Class对象。
+- 由用户自定义的类加载器所加载的类是可以被卸载的
+
+> 代码实例 cn.andios.jvm.classloader.MyTest17
+
+```java
+public class MyTest17 {
+    public static void main(String[] args) throws Exception {
+        /**
+         * result:
+         *      ====================
+         *      load cn.andios.jvm.classloader.MyTest1 findClass invoked & classLoaderName：loader1
+         *      [Unloading class cn.andios.jvm.classloader.MyTest1 0x0000000100061028]
+         *
+         * 查看类卸载的虚拟机参数：-XX:+TraceClassUnloading
+         *
+         * 第一句是MyTest16中findClass方法打印的(如果打印了这句话，
+         *  表示由我们自己的类加载器加载，如果没打印，表示由jvm的类加载器加载)，
+         * 第二句即表示类卸载，
+         * test1方法中的MyTest17由jvm的类加载器加载，所以不会发生类卸载
+         * test2中用我们自定义的MyTest16类加载器，所以会发生类卸载
+         */
+        //发生类卸载
+        test1();
+        System.out.println("====================");
+        //不会发生类卸载
+        test2();
+    }
+    private static void test1() throws Exception {
+        MyTest17 test1 = new MyTest17();
+        test1 = null;
+        System.gc();
+    }
+    private static void test2() throws Exception {
+        MyTest16 myLoader = new MyTest16("myLoader");
+        /**
+         * 删掉target下的MyTest.class文件才会使用我们自己的类加载器，
+         * 否则会使用jvm的类加载器，删除target下的MyTest.class后，
+         * 需要制定myLoader.setPath，否则报FileNotFoundException
+         */
+        myLoader.setPath("G:\\");
+        Class<?> clazz = myLoader.loadClass("cn.andios.jvm.classloader.MyTest1");
+
+        myLoader = null;
+        clazz = null;
+
+        System.gc();
+    }
+}
+```
+
+### 
 
