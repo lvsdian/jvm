@@ -1656,3 +1656,99 @@ public class MyTest17 {
 }
 ```
 
+### ContextClassLoader
+
+- 当前类加载器(`Current ClassLoader`)：加载当前类的类加载器
+
+- 每个类都会使用自己的类加载器(即加载自身的类加载器)去加载其他类(指这个类所依赖的其它的类)即如果ClassX引用了ClassY,那么ClassX的类加载器就会尝试加载ClassY,前提是ClassY尚未被加载。此时ClassX的类加载器就是当前类加载器
+- 线程上下文类加载器(`ThreadContextClassLoader`)是从jdk1.2开始引入的，Thread类中的`getContextClassLoader`与`setContextClassLoader`分别用来获取和设置线程上下文类加载器，如果没有设置，线程将继承其父线程的上下文类加载器
+-  java应用运行时初始线程的上下文类加载器是系统类加载器，在线程中运行的代码可以通过该类加载器来加载类与资源
+- 线程上下文类加载器的重要性：
+  - **父`ClassLoader`可以使用当前线程`Thread.currentThread().getContextClassLoader()`所得到的`ClassLoader`所加载的类，这就改变了父`ClassLoader`不能使用子`ClassLoader`或是其他没有直接父子关系的`ClassLoader`所加载的类的情况，即改变了双亲委托模型。**线程上下文类加载器就是当前线程的Current ClassLoader。
+  - 在双亲委托模型下，类加载是由下至上的，即下层的类加载器会委托上层进行加载，但对于`SPI(Service Provider Interface)`来说，有些接口是java核心库提供的，而java核心库由启动类加载器来加载，这些接口的实现又来自不同的厂商，java启动类加载器不会加载其他来源的jar包，这样传统的双亲委托模型就无法满足SPI的要求。而通过给当前线程设置上下文类加载器，就可以由设置的类加载器来实现对接口或实现类的加载。
+  - 例如`JDBC`中，`JDBC`规范由jdk中的`java.sql.Connection`接口、`java.sql.Statement`接口等定义，这些类位于`rt.jar`，由启动类加载，但具体的`msql`实现或`oracle`实现是放在`classpath`下让应用类加载器加载，子加载器加载的类可以访问父加载器加载的类，但父加载器加载的类无法识别子加载器加载的类。这时候就需要用线程上下文类加载器了。
+
+-  线程上下文类加载器一般使用模式：（获取-使用-还原）
+
+  ```java
+  ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
+  try{
+      Thread.currentThread().setContextClassLoader(targetTccl);
+      //myMethod里面则调用了Thread.currentThread().getContextClassLoader(),获取当前线程上下文做某些事情
+      myMethod();
+  }finally{
+      Thread.currentThread.setContextClassLoader(classLoader);
+  }
+  ```
+
+- 如果一个类由类加载器A加载，那么这个类的依赖类也由相同的类加载器加载(如果这个依赖类之前没有被加载过的话)，`ContextClassLoader`的作用就是为了破坏java的类加载委托机制。
+- 当高层提供了统一的接口让低层去实现，同时又要在高层加载(或实例化)低层的类时，就必须要通过线程上下文类加载器来帮助高层的ClassLoader找到并加载该类。
+
+### java.util.ServiceLoader
+
+> javadoc：
+>
+> 一个简单的服务提供者加载的设施。
+>
+> 一个服务是一个已知的接口或类(通常是抽象类)的集合。一个服务提供者是对一个服务的特定实现。一个提供者中的类通常会实现服务中定义的接口或成为服务类的子类。服务提供者可以以一种扩展的形式安装到java平台的实现中，比如把jar文件放到任何常规的扩展目录中。提供者还可以通过添加到classpath或者其他的平台指定的方式变得可用。
+>
+> 对于加载类目的，服务由单个类型来表示，也就是说单个接口或者抽象类。一个具体的类可以被使用但不推荐。一个给定服务的一个提供者会包含一个或多个具体的类，它们会根据数据和特定于提供者的代码扩展服务类型。提供者类通常不是整个提供者本身而是一种代理，它包含了足够的信息可以确定提供者能否满足特定的需求以及一些可以创建实际提供者的其他代码。提供者的类的细节是与特定的服务挂钩的，没有单个的类或接口可以将它们统一起来，所以这里没有定义这样的类型。这种设施惟一的需求就是提供者的类必须有一个无参构造器，这样在加载时就可以实例化。
+>
+> 一个服务提供者通过将`provider-configuration file`放在资源目录的`META-INF/services`目录下来被标识的。文件的名字就是服务类型的二进制完全限定名。这个文件会包含完全限定的二进制名称的具体提供者类的列表，一行一个。围绕它们的空格、空行、tab键都会被忽略掉，注释符号是'#'，每行位于注释后面的字符都会被忽略掉，文件必须使用utf-8来编码。
+>
+> 如果一个具体的提供者类出现在了多个配置文件中，或者在相同的配置文件中出现了多次，重复的就会被忽略掉。配置文件命名的服务提供者不需要与配置文件在同一个jar文件或者提供者自身的单元中。提供者必须可以通过与最初定位配置文件相同的类加载器访问。这对于实际是从文件中加载的类加载器来说并不是必要的。
+>
+> 提供者的定位和实例化是延迟的，也就是说按需定位和实例化。一个服务加载者会维护一个到目前为止已经加载的提供者的缓存，每个`iterator`方法的调用都会返回一个迭代器，它会先以实例化的顺序获取缓存里的所有元素，然后延迟定位和实例化其他剩余的提供者，把它们每一个都添加到缓存里在返回。这个缓存可以通过`reload`方法清空。
+>
+> 服务加载者通常在调用者安全的上下文中执行。信任的系统代码会调用这个类中的方法，迭代器的方法会从一个有权限的安全的上下文中返回。
+>
+> 这个类的 实例对多个并发的线程来说不是安全的。
+>
+> 除非指定了，否则向这个类中的任何方法传入`null`都会导致`NullPointerException`。
+>
+> 比如说，假设我们有一个服务类型`com.example.CodeSet`，用于表示对于某些协议的编码/解码对，这种情况下它是一个提供两个抽象方法的抽象类：
+>
+> ```java
+> public abstract Encoder getEncoder(String encodingName);
+> public abstract Decoder getDecoder(String encodingName);
+> ```
+>
+> 每个方法都会返回一个对象或提供者没有提供相应的编码就返回`null`，典型的提供者会支持超过一种编码。如果`com.example.impl.StandardCodecs`是`CodeSet`服务的一种实现，那么它的`jar`文件中应该包含一个名为`META-INF/services/com.example.CodecSet`的文件。
+>
+> 文件包含一行：
+>
+> `com.example.impl.StandardCodecs 	#Standard codecs`
+>
+> `CodecSet`类在初始化时会创建并保存一个单个的服务实例：
+>
+> ```java 
+> private static ServiceLoader<CodecSet> codecSetLoader= ServiceLoader.load(CodecSet.class);
+> ```
+>
+> 对于一个给定的编码名称想要定位一个编码器，它定义了一个静态的工厂方法，通过遍历已知的可用的提供者，当它定位到一个合适的编码器或者遍历完之后就会返回。
+>
+>  ```java
+> public static Encoder getEncoder(String encodingName) {
+>     for (CodecSet cp : codecSetLoader) {
+>         Encoder enc = cp.getEncoder(encodingName);
+>         if (enc != null)
+>             return enc;
+>     }
+>     return null;
+> }
+>  ```
+>
+> 使用说明：如果一个类加载器的`classpath`用于提供者加载并包含远程网络`ur`l地址，那么这些`url`在搜索提供者配置文件时将会被解引用(`dereferenced`)
+>
+> 这个活动是很常规的，尽管在`web-server log`中可能会导致实体被创建。如果`web server`没有被正确的配置，那么这种活动就会导致提供者加载的算法失败。
+>
+> Since：jdk1.6
+>
+> 泛型：即由这个加载器加载的服务类型
+>
+> 
+>
+>  
+>
+> 
+
